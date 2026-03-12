@@ -1,23 +1,42 @@
-# Prism — Distributed Tracing / 分布式链路追踪
+<div align="center">
 
-> A request passes through multiple services — Prism refracts it into a clear, visible trace.
->
-> 一束请求穿过多个服务，Prism 把它折射成清晰可见的完整链路。
+<!-- Logo: prism refracting light -->
+<img src="docs/assets/logo.svg" alt="Prism Logo" width="120" />
 
-[English](#features) | [中文](#功能特性)
+# Prism
 
----
+**Distributed Tracing System / 分布式链路追踪系统**
+
+*A request passes through multiple services — Prism refracts it into a clear, visible trace.*
+
+*一束请求穿过多个服务，Prism 把它折射成清晰可见的完整链路。*
+
+[![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev)
+[![ClickHouse](https://img.shields.io/badge/ClickHouse-24.1-FFCC01?style=flat-square&logo=clickhouse&logoColor=black)](https://clickhouse.com)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
+[![gRPC](https://img.shields.io/badge/gRPC-Protocol-244C5A?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJ3aGl0ZSI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiLz48L3N2Zz4=)](https://grpc.io)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
+
+<br />
+
+[Features](#features) · [Quick Start](#quick-start) · [SDK Integration](#sdk-integration) · [API](#api-overview) · [中文文档](#中文文档)
+
+</div>
+
+<br />
 
 ## Features
 
-- **Automatic instrumentation** — HTTP server/client, gRPC, database/sql middleware out of the box
-- **Context propagation** — Seamless trace context across HTTP, gRPC, and Kafka boundaries
-- **Adaptive sampling** — Errors and slow requests always captured, hash-based consistent sampling per trace
-- **Batch async export** — SDK buffers spans and sends via gRPC in configurable batches
-- **ClickHouse storage** — Column-oriented storage with automatic TTL, materialized views for aggregation
-- **Query API** — Search traces, service topology, latency/throughput statistics via REST
-- **Lightweight SDK** — Based on `context.Context`, zero-config defaults, `defer` pattern for span lifecycle
-- **Web UI** — Built-in dark-themed dashboard with trace search, waterfall timeline, service topology, and statistics charts
+| | Feature | Description |
+|---|---------|-------------|
+| :zap: | **Automatic Instrumentation** | HTTP server/client, gRPC, database/sql middleware out of the box |
+| :link: | **Context Propagation** | Seamless trace context across HTTP, gRPC, and Kafka boundaries |
+| :dart: | **Adaptive Sampling** | Errors and slow requests always captured, hash-based consistent sampling per trace |
+| :rocket: | **Batch Async Export** | SDK buffers spans and sends via gRPC in configurable batches |
+| :floppy_disk: | **ClickHouse Storage** | Column-oriented storage with automatic TTL, materialized views for aggregation |
+| :mag: | **Query API** | Search traces, service topology, latency/throughput statistics via REST |
+| :package: | **Lightweight SDK** | Based on `context.Context`, zero-config defaults, `defer` pattern for span lifecycle |
+| :bar_chart: | **Web UI** | Built-in dark-themed dashboard with trace search, waterfall timeline, service topology, and statistics |
 
 ## Quick Start
 
@@ -185,6 +204,33 @@ prism/
 
 ## Architecture
 
+```
+                          ┌─────────────────────────────────────────┐
+  ┌──────────┐   gRPC     │            Collector                    │
+  │  Go SDK  │──────────▶ │  ┌────────┐  ┌───────┐  ┌───────────┐ │
+  └──────────┘            │  │ Receive │─▶│ Batch │─▶│ BatchWrite│ │
+  ┌──────────┐   HTTP     │  └────────┘  └───────┘  └─────┬─────┘ │
+  │ Any Lang │──────────▶ │                                │       │
+  └──────────┘  JSON POST │                                │       │
+                          └────────────────────────────────┼───────┘
+                                                           │
+                          ┌──────────┐              ┌──────▼──────┐
+                          │  Redis   │◀─── deps ───│  ClickHouse  │
+                          └──────────┘              └──────┬──────┘
+                                                           │
+                          ┌────────────────────────────────┼───────┐
+                          │            Query Server         │       │
+                          │  ┌─────────┐  ┌──────────────┐ │       │
+                          │  │ REST API│  │ Embedded SPA │ │◀──────┘
+                          │  └─────────┘  └──────────────┘ │
+                          └────────────────────────────────────────┘
+                                          │
+                                    ┌─────▼─────┐
+                                    │  Browser   │
+                                    │  Web UI    │
+                                    └───────────┘
+```
+
 See [docs/design.md](docs/design.md) for the full technical design document.
 
 ## License
@@ -193,18 +239,24 @@ MIT
 
 ---
 
+<div align="center">
+
 # 中文文档
+
+</div>
 
 ## 功能特性
 
-- **自动埋点** — HTTP Server/Client、gRPC、database/sql 中间件开箱即用
-- **上下文传播** — HTTP Header、gRPC Metadata、Kafka Header 无缝传递 trace 上下文
-- **自适应采样** — 错误和慢请求必采，基于 trace_id hash 的一致性概率采样
-- **批量异步上报** — SDK 内存缓冲，gRPC 批量发送，可配置 batch 大小和刷新间隔
-- **ClickHouse 存储** — 列式存储，自带 TTL 过期，物化视图预聚合
-- **查询 API** — 链路搜索、服务拓扑、延迟/吞吐统计，RESTful 接口
-- **轻量 SDK** — 基于 `context.Context`，零配置默认值，`defer` 模式管理 Span 生命周期
-- **内置 Web UI** — 暗色主题仪表盘，支持链路搜索、瀑布流时间线、服务拓扑图、延迟/吞吐统计图表
+| | 特性 | 说明 |
+|---|------|------|
+| :zap: | **自动埋点** | HTTP Server/Client、gRPC、database/sql 中间件开箱即用 |
+| :link: | **上下文传播** | HTTP Header、gRPC Metadata、Kafka Header 无缝传递 trace 上下文 |
+| :dart: | **自适应采样** | 错误和慢请求必采，基于 trace_id hash 的一致性概率采样 |
+| :rocket: | **批量异步上报** | SDK 内存缓冲，gRPC 批量发送，可配置 batch 大小和刷新间隔 |
+| :floppy_disk: | **ClickHouse 存储** | 列式存储，自带 TTL 过期，物化视图预聚合 |
+| :mag: | **查询 API** | 链路搜索、服务拓扑、延迟/吞吐统计，RESTful 接口 |
+| :package: | **轻量 SDK** | 基于 `context.Context`，零配置默认值，`defer` 模式管理 Span 生命周期 |
+| :bar_chart: | **内置 Web UI** | 暗色主题仪表盘，链路搜索、瀑布流时间线、服务拓扑图、统计图表 |
 
 ## 快速开始
 
