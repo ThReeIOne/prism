@@ -1,9 +1,11 @@
 <div align="center">
 
-<!-- Logo: prism refracting light -->
-<img src="docs/assets/logo.svg" alt="Prism Logo" width="120" />
+[![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev)
+[![ClickHouse](https://img.shields.io/badge/ClickHouse-24.1-FFCC01?style=flat-square&logo=clickhouse&logoColor=black)](https://clickhouse.com)
+[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
-# Prism
+# 🔭 Prism
 
 **Distributed Tracing System / 分布式链路追踪系统**
 
@@ -11,19 +13,11 @@
 
 *一束请求穿过多个服务，Prism 把它折射成清晰可见的完整链路。*
 
-[![Go](https://img.shields.io/badge/Go-1.24-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev)
-[![ClickHouse](https://img.shields.io/badge/ClickHouse-24.1-FFCC01?style=flat-square&logo=clickhouse&logoColor=black)](https://clickhouse.com)
-[![React](https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react&logoColor=black)](https://react.dev)
-[![gRPC](https://img.shields.io/badge/gRPC-Protocol-244C5A?style=flat-square&logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJ3aGl0ZSI+PGNpcmNsZSBjeD0iMTIiIGN5PSIxMiIgcj0iMTAiLz48L3N2Zz4=)](https://grpc.io)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
-
-<br />
-
 [Features](#features) · [Quick Start](#quick-start) · [SDK Integration](#sdk-integration) · [API](#api-overview) · [中文文档](#中文文档)
 
 </div>
 
-<br />
+---
 
 ## Features
 
