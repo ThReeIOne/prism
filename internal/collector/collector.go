@@ -100,15 +100,26 @@ func (c *Collector) flush() {
 	metrics.FlushBatchSize.Observe(float64(len(records)))
 
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
 
-	if err := c.store.BatchInsert(ctx, records); err != nil {
-		slog.Error("flush to storage failed", "error", err, "count", len(records))
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			backoff := time.Duration(attempt*attempt) * 500 * time.Millisecond
+			time.Sleep(backoff)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		lastErr = c.store.BatchInsert(ctx, records)
+		cancel()
+		if lastErr == nil {
+			slog.Info("flushed spans to storage", "count", len(records))
+			break
+		}
+		slog.Warn("flush attempt failed", "attempt", attempt+1, "error", lastErr)
+	}
+	if lastErr != nil {
+		slog.Error("flush to storage failed after retries", "error", lastErr, "count", len(records))
 		metrics.FlushErrors.Inc()
 		metrics.SpansDropped.Add(float64(len(records)))
-	} else {
-		slog.Info("flushed spans to storage", "count", len(records))
 	}
 	metrics.FlushDuration.Observe(time.Since(start).Seconds())
 }

@@ -176,33 +176,72 @@ func (s *ClickHouseStorage) SearchTraces(ctx context.Context, params TraceSearch
 		traceIDs = append(traceIDs, tid)
 	}
 
-	// Fetch full traces
+	// Fetch full traces in a single query instead of N+1
+	if len(traceIDs) == 0 {
+		return nil, nil
+	}
+
+	spanRows, err := s.conn.Query(ctx, `
+		SELECT trace_id, span_id, parent_span_id, operation, service, kind,
+		       start_us, duration_us, status, tags, events
+		FROM spans
+		WHERE trace_id IN ?
+		ORDER BY start_us
+	`, traceIDs)
+	if err != nil {
+		return nil, fmt.Errorf("fetch trace spans: %w", err)
+	}
+	defer spanRows.Close()
+
+	traceMap := make(map[string]*TraceResult, len(traceIDs))
+	for spanRows.Next() {
+		var sp SpanRecord
+		if err := spanRows.Scan(
+			&sp.TraceID, &sp.SpanID, &sp.ParentSpanID,
+			&sp.Operation, &sp.Service, &sp.Kind,
+			&sp.StartUs, &sp.DurationUs, &sp.Status,
+			&sp.Tags, &sp.Events,
+		); err != nil {
+			return nil, fmt.Errorf("scan row: %w", err)
+		}
+		tr, ok := traceMap[sp.TraceID]
+		if !ok {
+			tr = &TraceResult{TraceID: sp.TraceID}
+			traceMap[sp.TraceID] = tr
+		}
+		tr.Spans = append(tr.Spans, sp)
+	}
+
+	// Preserve original trace ID order
 	var results []TraceResult
 	for _, tid := range traceIDs {
-		trace, err := s.GetTrace(ctx, tid)
-		if err != nil {
-			slog.Warn("failed to fetch trace", "trace_id", tid, "error", err)
-			continue
-		}
-		if trace != nil {
-			results = append(results, *trace)
+		if tr, ok := traceMap[tid]; ok {
+			results = append(results, *tr)
 		}
 	}
 	return results, nil
 }
 
-func (s *ClickHouseStorage) GetServices(ctx context.Context) ([]ServiceInfo, error) {
-	rows, err := s.conn.Query(ctx, `
+func (s *ClickHouseStorage) GetServices(ctx context.Context, lookback time.Duration) ([]ServiceInfo, error) {
+	if lookback <= 0 {
+		lookback = time.Hour
+	}
+	seconds := int(lookback.Seconds())
+	if seconds < 1 {
+		seconds = 3600
+	}
+
+	rows, err := s.conn.Query(ctx, fmt.Sprintf(`
 		SELECT
 			service,
-			count() / 3600 AS qps,
+			count() / %d AS qps,
 			countIf(status = 'error') / greatest(count(), 1) AS error_rate,
 			quantile(0.99)(duration_us) / 1000 AS p99_ms
 		FROM spans
 		WHERE start_us >= ?
 		GROUP BY service
 		ORDER BY service
-	`, uint64(time.Now().Add(-1*time.Hour).UnixMicro()))
+	`, seconds), uint64(time.Now().Add(-lookback).UnixMicro()))
 	if err != nil {
 		return nil, fmt.Errorf("query services: %w", err)
 	}
@@ -225,11 +264,11 @@ func (s *ClickHouseStorage) GetOperations(ctx context.Context, service string) (
 			operation,
 			sum(call_count) AS call_count,
 			sum(error_count) AS error_count,
-			total_duration_us / greatest(call_count, 1) / 1000 AS avg_ms,
+			sum(total_duration_us) / greatest(sum(call_count), 1) / 1000 AS avg_ms,
 			max(max_duration_us) / 1000 AS max_ms
 		FROM service_operations_mv
 		WHERE service = ?
-		GROUP BY operation, total_duration_us, call_count
+		GROUP BY operation
 		ORDER BY call_count DESC
 	`, service)
 	if err != nil {

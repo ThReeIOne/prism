@@ -94,8 +94,8 @@ type Storage interface {
 	// SearchTraces searches for traces matching the given criteria.
 	SearchTraces(ctx context.Context, params TraceSearchParams) ([]TraceResult, error)
 
-	// GetServices returns all known services with recent statistics.
-	GetServices(ctx context.Context) ([]ServiceInfo, error)
+	// GetServices returns all known services with statistics within the lookback window.
+	GetServices(ctx context.Context, lookback time.Duration) ([]ServiceInfo, error)
 
 	// GetOperations returns all operations for a given service.
 	GetOperations(ctx context.Context, service string) ([]OperationInfo, error)

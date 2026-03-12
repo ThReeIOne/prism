@@ -82,8 +82,9 @@ export async function searchTraces(params: Record<string, string>): Promise<{ tr
   return request(`/traces?${qs}`)
 }
 
-export async function getServices(): Promise<{ services: ServiceInfo[] }> {
-  return request('/services')
+export async function getServices(lookback?: string): Promise<{ services: ServiceInfo[] }> {
+  const params = lookback ? `?lookback=${lookback}` : ''
+  return request(`/services${params}`)
 }
 
 export async function getOperations(service: string): Promise<{ operations: OperationInfo[] }> {

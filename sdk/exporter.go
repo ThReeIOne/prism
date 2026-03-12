@@ -20,7 +20,10 @@ type BatchExporter struct {
 	mu            sync.Mutex
 	client        prismpb.CollectorServiceClient
 	conn          *grpc.ClientConn
+	ready         chan struct{} // closed when gRPC connection is ready
 	done          chan struct{}
+	shutdownOnce  sync.Once
+	wg            sync.WaitGroup // tracks flushLoop goroutine
 }
 
 // NewBatchExporter creates a new exporter that batches spans for gRPC export.
@@ -30,10 +33,12 @@ func NewBatchExporter(addr string, batchSize int, flushInterval time.Duration) *
 		batchSize:     batchSize,
 		flushInterval: flushInterval,
 		buffer:        make([]*Span, 0, batchSize),
+		ready:         make(chan struct{}),
 		done:          make(chan struct{}),
 	}
 
 	go e.connect()
+	e.wg.Add(1)
 	go e.flushLoop()
 	return e
 }
@@ -50,6 +55,7 @@ func (e *BatchExporter) connect() {
 	e.conn = conn
 	e.client = prismpb.NewCollectorServiceClient(conn)
 	e.mu.Unlock()
+	close(e.ready)
 }
 
 // Enqueue adds a span to the buffer; triggers flush if the batch is full.
@@ -66,12 +72,16 @@ func (e *BatchExporter) Enqueue(span *Span) {
 
 // Flush sends buffered spans to the collector.
 func (e *BatchExporter) Flush() {
-	e.mu.Lock()
-	if len(e.buffer) == 0 {
-		e.mu.Unlock()
+	// Wait for connection to be ready (with timeout)
+	select {
+	case <-e.ready:
+	case <-time.After(3 * time.Second):
+		slog.Warn("flush: collector connection not ready, retaining spans in buffer")
 		return
 	}
-	if e.client == nil {
+
+	e.mu.Lock()
+	if len(e.buffer) == 0 {
 		e.mu.Unlock()
 		return
 	}
@@ -79,6 +89,14 @@ func (e *BatchExporter) Flush() {
 	e.buffer = make([]*Span, 0, e.batchSize)
 	client := e.client
 	e.mu.Unlock()
+
+	if client == nil {
+		// Connection failed permanently, re-enqueue
+		e.mu.Lock()
+		e.buffer = append(batch, e.buffer...)
+		e.mu.Unlock()
+		return
+	}
 
 	pbBatch := &prismpb.SpanBatch{
 		Spans: make([]*prismpb.Span, len(batch)),
@@ -93,16 +111,19 @@ func (e *BatchExporter) Flush() {
 	_, err := client.Report(ctx, pbBatch)
 	if err != nil {
 		slog.Warn("failed to export spans", "error", err, "count", len(batch))
-		// Re-enqueue on failure (up to 10x batch limit)
+		// Re-enqueue on failure (up to 10x batch limit to prevent OOM)
 		e.mu.Lock()
 		if len(e.buffer)+len(batch) < e.batchSize*10 {
 			e.buffer = append(batch, e.buffer...)
+		} else {
+			slog.Warn("export buffer full, dropping spans", "count", len(batch))
 		}
 		e.mu.Unlock()
 	}
 }
 
 func (e *BatchExporter) flushLoop() {
+	defer e.wg.Done()
 	ticker := time.NewTicker(e.flushInterval)
 	defer ticker.Stop()
 	for {
@@ -117,11 +138,14 @@ func (e *BatchExporter) flushLoop() {
 
 // Shutdown flushes remaining spans and closes the connection.
 func (e *BatchExporter) Shutdown() {
-	close(e.done)
-	e.Flush()
-	e.mu.Lock()
-	if e.conn != nil {
-		e.conn.Close()
-	}
-	e.mu.Unlock()
+	e.shutdownOnce.Do(func() {
+		close(e.done)
+		e.wg.Wait() // wait for flushLoop to exit before final flush
+		e.Flush()
+		e.mu.Lock()
+		if e.conn != nil {
+			e.conn.Close()
+		}
+		e.mu.Unlock()
+	})
 }

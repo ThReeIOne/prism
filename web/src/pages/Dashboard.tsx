@@ -2,21 +2,49 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getServices, type ServiceInfo } from '../lib/api'
 
+const TIME_OPTIONS = [
+  { label: '1h', value: '1h' },
+  { label: '3h', value: '3h' },
+  { label: '6h', value: '6h' },
+  { label: '12h', value: '12h' },
+  { label: '24h', value: '24h' },
+]
+
 export default function Dashboard() {
   const [services, setServices] = useState<ServiceInfo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [lookback, setLookback] = useState('1h')
 
   useEffect(() => {
-    getServices()
+    setLoading(true)
+    setError('')
+    getServices(lookback)
       .then((res) => setServices(res.services || []))
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false))
-  }, [])
+  }, [lookback])
 
   return (
     <div className="p-6">
-      <h2 className="text-2xl font-semibold mb-6">Dashboard</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-semibold">Dashboard</h2>
+        <div className="flex items-center gap-1 bg-slate-800 rounded-lg border border-slate-700 p-0.5">
+          {TIME_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setLookback(opt.value)}
+              className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                lookback === opt.value
+                  ? 'bg-violet-600 text-white'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4 mb-8">
@@ -43,7 +71,7 @@ export default function Dashboard() {
       {/* Service table */}
       <div className="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
         <div className="px-4 py-3 border-b border-slate-700 flex items-center justify-between">
-          <h3 className="font-medium">Services (last 1h)</h3>
+          <h3 className="font-medium">Services (last {lookback})</h3>
           <Link to="/traces" className="text-sm text-violet-400 hover:text-violet-300">
             Search Traces &rarr;
           </Link>

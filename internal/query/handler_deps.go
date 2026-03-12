@@ -2,6 +2,7 @@ package query
 
 import (
 	"net/http"
+	"sort"
 	"time"
 )
 
@@ -28,6 +29,9 @@ func (s *Server) getDependencies(w http.ResponseWriter, r *http.Request) {
 	for name := range nodeSet {
 		nodes = append(nodes, map[string]string{"id": name, "label": name})
 	}
+	sort.Slice(nodes, func(i, j int) bool {
+		return nodes[i]["id"] < nodes[j]["id"]
+	})
 
 	edges := make([]map[string]any, 0, len(deps))
 	for _, d := range deps {

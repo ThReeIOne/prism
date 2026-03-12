@@ -2,12 +2,20 @@ package query
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
 
 func (s *Server) getServices(w http.ResponseWriter, r *http.Request) {
-	services, err := s.store.GetServices(r.Context())
+	lookback := time.Hour // default
+	if lb := r.URL.Query().Get("lookback"); lb != "" {
+		if d, err := time.ParseDuration(lb); err == nil && d > 0 {
+			lookback = d
+		}
+	}
+
+	services, err := s.store.GetServices(r.Context(), lookback)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

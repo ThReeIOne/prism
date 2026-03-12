@@ -51,11 +51,12 @@ func (s *AdaptiveSampler) ShouldSample(span *Span) bool {
 		return true
 	}
 
-	// Rule 3: rate limiting
+	// Rule 3: rate limiting (CAS to avoid reset race)
 	now := time.Now().Unix()
-	if now != s.lastReset.Load() {
-		s.counter.Store(0)
-		s.lastReset.Store(now)
+	if last := s.lastReset.Load(); now != last {
+		if s.lastReset.CompareAndSwap(last, now) {
+			s.counter.Store(0)
+		}
 	}
 	if s.counter.Load() >= s.maxPerSec {
 		return false
