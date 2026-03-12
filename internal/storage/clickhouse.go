@@ -260,7 +260,7 @@ func (s *ClickHouseStorage) GetDependencies(ctx context.Context, start, end time
 		WHERE date >= ? AND date <= ?
 		GROUP BY parent_service, child_service
 		ORDER BY call_count DESC
-	`, start, end)
+	`, start.Format("2006-01-02"), end.Format("2006-01-02"))
 	if err != nil {
 		return nil, fmt.Errorf("query dependencies: %w", err)
 	}
