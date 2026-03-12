@@ -49,6 +49,7 @@ func (e *BatchExporter) connect() {
 	)
 	if err != nil {
 		slog.Error("failed to connect to collector", "error", err, "addr", e.collectorAddr)
+		close(e.ready) // unblock Flush so it doesn't wait 3s on every call
 		return
 	}
 	e.mu.Lock()
