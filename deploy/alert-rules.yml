@@ -1,0 +1,58 @@
+groups:
+  - name: prism-collector
+    rules:
+      - alert: SpansBeingDropped
+        expr: rate(prism_collector_spans_dropped_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Collector is dropping spans"
+          description: "{{ $value | printf \"%.1f\" }} spans/s dropped in the last 5 minutes. Buffer full or flush failures."
+
+      - alert: BufferNearFull
+        expr: prism_collector_buffer_size / prism_collector_buffer_capacity > 0.8
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Collector buffer usage above 80%"
+          description: "Buffer at {{ $value | printf \"%.0f\" }}%% capacity. Backpressure imminent."
+
+      - alert: FlushFailures
+        expr: rate(prism_collector_flush_errors_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "ClickHouse flush is failing"
+          description: "Flush error rate: {{ $value | printf \"%.2f\" }}/s. Check ClickHouse connectivity."
+
+      - alert: FlushLatencyHigh
+        expr: histogram_quantile(0.99, rate(prism_collector_flush_duration_seconds_bucket[5m])) > 5
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Flush latency P99 exceeds 5s"
+          description: "P99 flush duration: {{ $value | printf \"%.2f\" }}s. ClickHouse may be overloaded."
+
+  - name: prism-query
+    rules:
+      - alert: QueryErrorRateHigh
+        expr: sum(rate(prism_query_requests_total{status=~"5.."}[5m])) / sum(rate(prism_query_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Query API 5xx error rate above 5%"
+          description: "{{ $value | printf \"%.1f\" }}%% of queries returning 5xx. Check ClickHouse and query server logs."
+
+      - alert: QueryLatencyHigh
+        expr: histogram_quantile(0.99, sum(rate(prism_query_duration_seconds_bucket[5m])) by (le)) > 3
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Query API P99 latency exceeds 3s"
+          description: "P99 query latency: {{ $value | printf \"%.2f\" }}s."
