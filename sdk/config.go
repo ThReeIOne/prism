@@ -8,6 +8,7 @@ type Config struct {
 	BatchSize     int
 	FlushInterval time.Duration
 	Sampler       Sampler
+	IngestToken   string
 }
 
 func defaultConfig() *Config {
@@ -47,5 +48,13 @@ func WithFlushInterval(d time.Duration) Option {
 func WithSampler(s Sampler) Option {
 	return func(c *Config) {
 		c.Sampler = s
+	}
+}
+
+// WithIngestToken sets the bearer token sent in the Authorization metadata
+// header on every gRPC Report call. If empty, no Authorization header is sent.
+func WithIngestToken(token string) Option {
+	return func(c *Config) {
+		c.IngestToken = token
 	}
 }

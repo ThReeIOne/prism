@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/shengli/prism/internal/metrics"
@@ -32,28 +33,42 @@ type HTTPSpan struct {
 //	POST /api/v1/spans
 //	Content-Type: application/json
 //	Body: [{"trace_id":"...","span_id":"...","service":"my-app",...}]
-func (c *Collector) HTTPIngestHandler() http.Handler {
+//
+// token is the optional bearer token to require (empty = no auth).
+// origins is the value for Access-Control-Allow-Origin (e.g. "*").
+func (c *Collector) HTTPIngestHandler(token, origins string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodOptions {
-			writeCORS(w)
+			writeCORS(w, origins)
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		if r.Method != http.MethodPost {
-			writeCORS(w)
+			writeCORS(w, origins)
 			writeJSONError(w, http.StatusMethodNotAllowed, "POST required")
 			return
 		}
 
+		// Bearer token auth (optional)
+		if token != "" {
+			auth := r.Header.Get("Authorization")
+			expected := "Bearer " + token
+			if !strings.EqualFold(strings.TrimSpace(auth), strings.TrimSpace(expected)) {
+				writeCORS(w, origins)
+				writeJSONError(w, http.StatusUnauthorized, "invalid or missing bearer token")
+				return
+			}
+		}
+
 		var spans []HTTPSpan
 		if err := json.NewDecoder(r.Body).Decode(&spans); err != nil {
-			writeCORS(w)
+			writeCORS(w, origins)
 			writeJSONError(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON: %v", err))
 			return
 		}
 
 		if len(spans) == 0 {
-			writeCORS(w)
+			writeCORS(w, origins)
 			writeJSONError(w, http.StatusBadRequest, "empty span list")
 			return
 		}
@@ -62,7 +77,7 @@ func (c *Collector) HTTPIngestHandler() http.Handler {
 		records := make([]storage.SpanRecord, 0, len(spans))
 		for i, sp := range spans {
 			if sp.TraceID == "" || sp.SpanID == "" || sp.Service == "" {
-				writeCORS(w)
+				writeCORS(w, origins)
 				writeJSONError(w, http.StatusBadRequest,
 					fmt.Sprintf("span[%d]: trace_id, span_id, and service are required", i))
 				return
@@ -71,12 +86,18 @@ func (c *Collector) HTTPIngestHandler() http.Handler {
 		}
 
 		// Buffer the spans (reuse the same flush path as gRPC)
-		c.bufferRecords(records)
+		if full := c.bufferRecords(records); full {
+			writeCORS(w, origins)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusTooManyRequests)
+			json.NewEncoder(w).Encode(map[string]string{"error": "collector buffer full"})
+			return
+		}
 
 		metrics.SpansReceived.Add(float64(len(records)))
 		metrics.SDKReportBatchSize.Observe(float64(len(records)))
 
-		writeCORS(w)
+		writeCORS(w, origins)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]any{
@@ -126,10 +147,13 @@ func httpSpanToRecord(sp HTTPSpan) storage.SpanRecord {
 	}
 }
 
-func writeCORS(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+func writeCORS(w http.ResponseWriter, origins string) {
+	if origins == "" {
+		origins = "*"
+	}
+	w.Header().Set("Access-Control-Allow-Origin", origins)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 }
 
 func writeJSONError(w http.ResponseWriter, status int, msg string) {

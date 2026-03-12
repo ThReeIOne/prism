@@ -13,11 +13,13 @@ import (
 
 func main() {
 	var (
-		listenAddr = flag.String("listen", ":28080", "HTTP listen address")
-		chAddrs    = flag.String("clickhouse", "localhost:29000", "ClickHouse address")
-		chDB       = flag.String("ch-db", "prism", "ClickHouse database")
-		chUser     = flag.String("ch-user", "default", "ClickHouse username")
-		chPass     = flag.String("ch-pass", "", "ClickHouse password")
+		listenAddr  = flag.String("listen", ":28080", "HTTP listen address")
+		chAddrs     = flag.String("clickhouse", "localhost:29000", "ClickHouse address")
+		chDB        = flag.String("ch-db", "prism", "ClickHouse database")
+		chUser      = flag.String("ch-user", "default", "ClickHouse username")
+		chPass      = flag.String("ch-pass", "", "ClickHouse password")
+		queryToken  = flag.String("query-token", "", "Optional bearer token for /api/v1/* auth (empty = no auth)")
+		corsOrigins = flag.String("cors-origins", "*", "Allowed CORS origin for query API (Access-Control-Allow-Origin)")
 	)
 	flag.Parse()
 
@@ -35,7 +37,10 @@ func main() {
 	defer store.Close()
 
 	// Create and start query server
-	srv := query.NewServer(store)
+	srv := query.NewServer(store,
+		query.WithToken(*queryToken),
+		query.WithCORSOrigins(*corsOrigins),
+	)
 
 	go func() {
 		if err := srv.ListenAndServe(*listenAddr); err != nil {

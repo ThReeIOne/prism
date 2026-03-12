@@ -24,7 +24,7 @@ func NewTracer(service string, opts ...Option) *Tracer {
 	}
 	t := &Tracer{
 		service:  service,
-		exporter: NewBatchExporter(cfg.CollectorAddr, cfg.BatchSize, cfg.FlushInterval),
+		exporter: newBatchExporter(cfg.CollectorAddr, cfg.BatchSize, cfg.FlushInterval, cfg.IngestToken),
 		sampler:  cfg.Sampler,
 	}
 	return t
@@ -57,8 +57,23 @@ func (t *Tracer) StartSpan(ctx context.Context, operation string, opts ...SpanOp
 }
 
 // FinishSpan ends a span and enqueues it for export.
-func (t *Tracer) FinishSpan(span *Span) {
+// It checks ctx.Err() and marks the span as an error if the context was
+// cancelled or timed out — but only when the span is still StatusOK, so that
+// business-layer errors are not overwritten.
+func (t *Tracer) FinishSpan(ctx context.Context, span *Span) {
 	span.DurationUs = uint64(time.Now().UnixMicro()) - span.StartUs
+
+	if span.Status == StatusOK {
+		switch ctx.Err() {
+		case context.DeadlineExceeded:
+			span.Status = StatusError
+			span.Tags["error.type"] = "deadline_exceeded"
+		case context.Canceled:
+			span.Status = StatusError
+			span.Tags["error.type"] = "context_cancelled"
+		}
+	}
+
 	if t.sampler.ShouldSample(span) {
 		t.exporter.Enqueue(span)
 	}

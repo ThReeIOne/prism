@@ -116,6 +116,9 @@ httpClient := &http.Client{
 | `-redis` | `localhost:26379` | Redis address |
 | `-flush-size` | `5000` | Batch flush threshold |
 | `-metrics` | `:24318` | Prometheus metrics HTTP address |
+| `-ingest-token` | (empty) | Bearer token for HTTP ingest auth (empty = no auth) |
+| `-cors-origins` | `*` | `Access-Control-Allow-Origin` value for HTTP ingest |
+| `-max-buffer` | `100000` | Max spans to buffer in memory before applying backpressure (gRPC → ResourceExhausted, HTTP → 429) |
 
 ### Query Server Flags
 
@@ -124,6 +127,8 @@ httpClient := &http.Client{
 | `-listen` | `:28080` | HTTP listen address |
 | `-clickhouse` | `localhost:29000` | ClickHouse native address |
 | `-ch-db` | `prism` | ClickHouse database name |
+| `-query-token` | (empty) | Bearer token for `/api/v1/*` auth (empty = no auth) |
+| `-cors-origins` | `*` | `Access-Control-Allow-Origin` value for query API |
 
 ### SDK Options
 
@@ -133,6 +138,7 @@ httpClient := &http.Client{
 | `WithBatchSize(n)` | `1024` | Spans per batch |
 | `WithFlushInterval(d)` | `5s` | Batch flush interval |
 | `WithSampler(s)` | `AlwaysSampler` | Sampling strategy |
+| `WithIngestToken(token)` | (empty) | Bearer token sent in gRPC `authorization` metadata |
 
 ## API Overview
 
@@ -336,6 +342,9 @@ httpClient := &http.Client{
 | `-redis` | `localhost:26379` | Redis 地址 |
 | `-flush-size` | `5000` | 批量刷入阈值 |
 | `-metrics` | `:24318` | Prometheus 指标 HTTP 地址 |
+| `-ingest-token` | (空) | HTTP ingest 鉴权 bearer token（空 = 不校验） |
+| `-cors-origins` | `*` | HTTP ingest `Access-Control-Allow-Origin` 值 |
+| `-max-buffer` | `100000` | 内存 span 缓冲上限，超限对 gRPC 返回 ResourceExhausted，对 HTTP 返回 429 |
 
 ### Query 服务参数
 
@@ -344,6 +353,8 @@ httpClient := &http.Client{
 | `-listen` | `:28080` | HTTP 监听地址 |
 | `-clickhouse` | `localhost:29000` | ClickHouse 原生协议地址 |
 | `-ch-db` | `prism` | ClickHouse 数据库名 |
+| `-query-token` | (空) | `/api/v1/*` 鉴权 bearer token（空 = 不校验） |
+| `-cors-origins` | `*` | Query API `Access-Control-Allow-Origin` 值 |
 
 ### SDK 配置项
 
@@ -353,6 +364,7 @@ httpClient := &http.Client{
 | `WithBatchSize(n)` | `1024` | 每批 Span 数量 |
 | `WithFlushInterval(d)` | `5s` | 批量刷新间隔 |
 | `WithSampler(s)` | `AlwaysSampler` | 采样策略 |
+| `WithIngestToken(token)` | (空) | gRPC `authorization` metadata 中携带的 bearer token |
 
 ## API 接口
 
