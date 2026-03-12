@@ -36,7 +36,8 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.collector
     ports:
-      - "24317:24317"
+      - "24317:24317"   # gRPC
+      - "24318:24318"   # Metrics HTTP
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -44,6 +45,7 @@ services:
         condition: service_healthy
     command:
       - "-listen=:24317"
+      - "-metrics=:24318"
       - "-clickhouse=clickhouse:9000"
       - "-ch-db=prism"
       - "-redis=redis:6379"
@@ -54,7 +56,7 @@ services:
       context: ..
       dockerfile: deploy/Dockerfile.query
     ports:
-      - "28080:28080"
+      - "28080:28080"   # HTTP API + Metrics
     depends_on:
       clickhouse:
         condition: service_healthy
@@ -63,6 +65,37 @@ services:
       - "-clickhouse=clickhouse:9000"
       - "-ch-db=prism"
 
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    ports:
+      - "29090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    depends_on:
+      - collector
+      - query
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    ports:
+      - "23000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: prism
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    depends_on:
+      - prometheus
+
 volumes:
   clickhouse_data:
   redis_data:
+  prometheus_data:
+  grafana_data:

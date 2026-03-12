@@ -1,0 +1,16 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: "prism-collector"
+    static_configs:
+      - targets: ["collector:24318"]
+        labels:
+          service: "collector"
+
+  - job_name: "prism-query"
+    static_configs:
+      - targets: ["query:28080"]
+        labels:
+          service: "query"

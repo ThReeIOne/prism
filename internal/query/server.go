@@ -1,13 +1,19 @@
 package query
 
 import (
+	"io/fs"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/shengli/prism/internal/metrics"
 	"github.com/shengli/prism/internal/storage"
+	"github.com/shengli/prism/web"
 )
 
 // Server is the Query API server.
@@ -30,6 +36,7 @@ func (s *Server) setupRoutes() {
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Timeout(30 * time.Second))
 	r.Use(corsMiddleware)
+	r.Use(metricsMiddleware)
 
 	r.Route("/api/v1", func(r chi.Router) {
 		// Trace endpoints
@@ -53,6 +60,12 @@ func (s *Server) setupRoutes() {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status":"ok"}`))
 	})
+
+	// Prometheus metrics
+	r.Handle("/metrics", promhttp.Handler())
+
+	// Serve embedded frontend SPA
+	s.mountFrontend(r)
 
 	s.router = r
 }
@@ -78,5 +91,67 @@ func corsMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+type responseRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *responseRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip metrics for /metrics and /health
+		if r.URL.Path == "/metrics" || r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		start := time.Now()
+		rec := &responseRecorder{ResponseWriter: w, status: 200}
+		next.ServeHTTP(rec, r)
+		duration := time.Since(start).Seconds()
+
+		endpoint := chi.RouteContext(r.Context()).RoutePattern()
+		if endpoint == "" {
+			endpoint = r.URL.Path
+		}
+		status := strconv.Itoa(rec.status)
+
+		metrics.QueryDuration.WithLabelValues(endpoint, status).Observe(duration)
+		metrics.QueryRequests.WithLabelValues(endpoint, status).Inc()
+	})
+}
+
+func (s *Server) mountFrontend(r chi.Router) {
+	// Serve embedded frontend from web/dist
+	distFS, err := fs.Sub(web.Assets, "dist")
+	if err != nil {
+		slog.Warn("frontend assets not available", "error", err)
+		return
+	}
+
+	fileServer := http.FileServer(http.FS(distFS))
+
+	// Catch-all: serve static files or fall back to index.html for SPA routing
+	r.Get("/*", func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+
+		// Try to open the file from embedded FS
+		f, err := distFS.Open(path)
+		if err == nil {
+			f.Close()
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		// Fall back to index.html for SPA client-side routing
+		r.URL.Path = "/"
+		fileServer.ServeHTTP(w, r)
 	})
 }

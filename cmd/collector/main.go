@@ -4,10 +4,12 @@ import (
 	"flag"
 	"log/slog"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 	"github.com/shengli/prism/internal/collector"
 	"github.com/shengli/prism/internal/storage"
@@ -17,13 +19,14 @@ import (
 
 func main() {
 	var (
-		listenAddr = flag.String("listen", ":24317", "gRPC listen address")
-		chAddrs    = flag.String("clickhouse", "localhost:29000", "ClickHouse address")
-		chDB       = flag.String("ch-db", "prism", "ClickHouse database")
-		chUser     = flag.String("ch-user", "default", "ClickHouse username")
-		chPass     = flag.String("ch-pass", "", "ClickHouse password")
-		redisAddr  = flag.String("redis", "localhost:26379", "Redis address")
-		flushSize  = flag.Int("flush-size", 5000, "Batch flush size")
+		listenAddr  = flag.String("listen", ":24317", "gRPC listen address")
+		metricsAddr = flag.String("metrics", ":24318", "Prometheus metrics HTTP address")
+		chAddrs     = flag.String("clickhouse", "localhost:29000", "ClickHouse address")
+		chDB        = flag.String("ch-db", "prism", "ClickHouse database")
+		chUser      = flag.String("ch-user", "default", "ClickHouse username")
+		chPass      = flag.String("ch-pass", "", "ClickHouse password")
+		redisAddr   = flag.String("redis", "localhost:26379", "Redis address")
+		flushSize   = flag.Int("flush-size", 5000, "Batch flush size")
 	)
 	flag.Parse()
 
@@ -50,6 +53,20 @@ func main() {
 		Store:      store,
 		DepTracker: depTracker,
 	})
+
+	// Start metrics HTTP server
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status":"ok"}`))
+		})
+		slog.Info("collector metrics server starting", "addr", *metricsAddr)
+		if err := http.ListenAndServe(*metricsAddr, mux); err != nil {
+			slog.Error("metrics server error", "error", err)
+		}
+	}()
 
 	// Start gRPC server
 	lis, err := net.Listen("tcp", *listenAddr)

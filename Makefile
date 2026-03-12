@@ -1,9 +1,9 @@
-.PHONY: all proto build test clean collector query docker-up docker-down lint
+.PHONY: all proto build test clean collector query web docker-up docker-down lint
 
 BINARY_DIR := bin
 GO := go
 
-all: proto build
+all: proto web build
 
 # Generate protobuf code
 proto:
@@ -12,7 +12,11 @@ proto:
 		--go-grpc_out=proto/gen --go-grpc_opt=paths=source_relative \
 		proto/span.proto proto/collector.proto
 
-# Build binaries
+# Build frontend
+web:
+	cd web && npm install --cache /tmp/npm-cache-prism && npm run build
+
+# Build binaries (query embeds web/dist via go:embed)
 build: collector query
 
 collector:
@@ -42,8 +46,10 @@ docker-build:
 # Clean
 clean:
 	rm -rf $(BINARY_DIR)
+	rm -rf web/dist web/node_modules
 	$(GO) clean ./...
 
 # Dependencies
 deps:
 	$(GO) mod tidy
+	cd web && npm install --cache /tmp/npm-cache-prism

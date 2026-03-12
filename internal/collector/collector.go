@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shengli/prism/internal/metrics"
 	"github.com/shengli/prism/internal/storage"
 	prismpb "github.com/shengli/prism/proto/gen"
 )
@@ -54,6 +55,10 @@ func New(cfg Config) *Collector {
 
 // Report implements the gRPC CollectorService.Report method.
 func (c *Collector) Report(ctx context.Context, batch *prismpb.SpanBatch) (*prismpb.ReportResponse, error) {
+	spanCount := len(batch.Spans)
+	metrics.SpansReceived.Add(float64(spanCount))
+	metrics.SDKReportBatchSize.Observe(float64(spanCount))
+
 	c.mu.Lock()
 	for _, span := range batch.Spans {
 		if c.depTracker != nil {
@@ -62,13 +67,14 @@ func (c *Collector) Report(ctx context.Context, batch *prismpb.SpanBatch) (*pris
 		c.buffer = append(c.buffer, span)
 	}
 	shouldFlush := len(c.buffer) >= c.flushSize
+	metrics.BufferSize.Set(float64(len(c.buffer)))
 	c.mu.Unlock()
 
 	if shouldFlush {
 		go c.flush()
 	}
 
-	return &prismpb.ReportResponse{Accepted: int32(len(batch.Spans))}, nil
+	return &prismpb.ReportResponse{Accepted: int32(spanCount)}, nil
 }
 
 func (c *Collector) flush() {
@@ -79,6 +85,7 @@ func (c *Collector) flush() {
 	}
 	batch := c.buffer
 	c.buffer = make([]*prismpb.Span, 0, c.flushSize)
+	metrics.BufferSize.Set(float64(len(c.buffer)))
 	c.mu.Unlock()
 
 	records := make([]storage.SpanRecord, 0, len(batch))
@@ -86,14 +93,20 @@ func (c *Collector) flush() {
 		records = append(records, protoToRecord(sp))
 	}
 
+	metrics.FlushBatchSize.Observe(float64(len(records)))
+
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := c.store.BatchInsert(ctx, records); err != nil {
 		slog.Error("flush to storage failed", "error", err, "count", len(records))
+		metrics.FlushErrors.Inc()
+		metrics.SpansDropped.Add(float64(len(records)))
 	} else {
 		slog.Info("flushed spans to storage", "count", len(records))
 	}
+	metrics.FlushDuration.Observe(time.Since(start).Seconds())
 }
 
 func (c *Collector) flushLoop() {
