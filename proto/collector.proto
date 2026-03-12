@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package prism;
+
+option go_package = "github.com/shengli/prism/proto/gen;prismpb";
+
+import "span.proto";
+
+service CollectorService {
+    rpc Report(SpanBatch) returns (ReportResponse);
+}
+
+message ReportResponse {
+    int32 accepted = 1;
+}

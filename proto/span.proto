@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package prism;
+
+option go_package = "github.com/shengli/prism/proto/gen;prismpb";
+
+message Span {
+    bytes  trace_id       = 1;  // 16 bytes (128-bit)
+    bytes  span_id        = 2;  // 8 bytes (64-bit)
+    bytes  parent_span_id = 3;  // 8 bytes, empty for root span
+    string operation      = 4;  // "POST /api/orders"
+    string service        = 5;  // "order-svc"
+    SpanKind kind         = 6;
+    uint64 start_us       = 7;  // microsecond timestamp
+    uint64 duration_us    = 8;
+    StatusCode status     = 9;
+    repeated KeyValue tags   = 10;
+    repeated SpanEvent events = 11;
+}
+
+enum SpanKind {
+    INTERNAL = 0;
+    SERVER   = 1;
+    CLIENT   = 2;
+    PRODUCER = 3;
+    CONSUMER = 4;
+}
+
+enum StatusCode {
+    OK    = 0;
+    ERROR = 1;
+}
+
+message KeyValue {
+    string key   = 1;
+    string value = 2;
+}
+
+message SpanEvent {
+    uint64 timestamp_us = 1;
+    string name         = 2;
+    repeated KeyValue attributes = 3;
+}
+
+message SpanBatch {
+    repeated Span spans = 1;
+}

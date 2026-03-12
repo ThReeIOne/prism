@@ -1,0 +1,68 @@
+version: "3.8"
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.1
+    ports:
+      - "29123:8123"   # HTTP
+      - "29000:9000"   # Native
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse-init.sql:/docker-entrypoint-initdb.d/init.sql
+    environment:
+      CLICKHOUSE_DB: prism
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "26379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  collector:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.collector
+    ports:
+      - "24317:24317"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command:
+      - "-listen=:24317"
+      - "-clickhouse=clickhouse:9000"
+      - "-ch-db=prism"
+      - "-redis=redis:6379"
+      - "-flush-size=5000"
+
+  query:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.query
+    ports:
+      - "28080:28080"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    command:
+      - "-listen=:28080"
+      - "-clickhouse=clickhouse:9000"
+      - "-ch-db=prism"
+
+volumes:
+  clickhouse_data:
+  redis_data:
