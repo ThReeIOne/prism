@@ -153,9 +153,10 @@ func (s *ClickHouseStorage) SearchTraces(ctx context.Context, params TraceSearch
 
 	// First find matching trace IDs
 	query := fmt.Sprintf(`
-		SELECT DISTINCT trace_id
+		SELECT trace_id
 		FROM spans
 		%s
+		GROUP BY trace_id
 		ORDER BY max(start_us) DESC
 		LIMIT %d
 	`, where, limit)
