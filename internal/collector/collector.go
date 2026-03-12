@@ -17,6 +17,7 @@ import (
 type Collector struct {
 	prismpb.UnimplementedCollectorServiceServer
 	buffer        []*prismpb.Span
+	recordBuffer  []storage.SpanRecord // for HTTP ingest (already converted)
 	mu            sync.Mutex
 	flushSize     int
 	flushInterval time.Duration
@@ -79,19 +80,22 @@ func (c *Collector) Report(ctx context.Context, batch *prismpb.SpanBatch) (*pris
 
 func (c *Collector) flush() {
 	c.mu.Lock()
-	if len(c.buffer) == 0 {
+	if len(c.buffer) == 0 && len(c.recordBuffer) == 0 {
 		c.mu.Unlock()
 		return
 	}
-	batch := c.buffer
+	protoBatch := c.buffer
+	httpBatch := c.recordBuffer
 	c.buffer = make([]*prismpb.Span, 0, c.flushSize)
-	metrics.BufferSize.Set(float64(len(c.buffer)))
+	c.recordBuffer = nil
+	metrics.BufferSize.Set(0)
 	c.mu.Unlock()
 
-	records := make([]storage.SpanRecord, 0, len(batch))
-	for _, sp := range batch {
+	records := make([]storage.SpanRecord, 0, len(protoBatch)+len(httpBatch))
+	for _, sp := range protoBatch {
 		records = append(records, protoToRecord(sp))
 	}
+	records = append(records, httpBatch...)
 
 	metrics.FlushBatchSize.Observe(float64(len(records)))
 
@@ -126,6 +130,19 @@ func (c *Collector) flushLoop() {
 func (c *Collector) Shutdown() {
 	close(c.done)
 	c.flush()
+}
+
+// bufferRecords adds pre-converted SpanRecords to the buffer (used by HTTP ingest).
+func (c *Collector) bufferRecords(records []storage.SpanRecord) {
+	c.mu.Lock()
+	c.recordBuffer = append(c.recordBuffer, records...)
+	shouldFlush := len(c.buffer) >= c.flushSize || len(c.recordBuffer) >= c.flushSize
+	metrics.BufferSize.Set(float64(len(c.buffer) + len(c.recordBuffer)))
+	c.mu.Unlock()
+
+	if shouldFlush {
+		go c.flush()
+	}
 }
 
 func protoToRecord(sp *prismpb.Span) storage.SpanRecord {

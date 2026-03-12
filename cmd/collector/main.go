@@ -54,7 +54,7 @@ func main() {
 		DepTracker: depTracker,
 	})
 
-	// Start metrics HTTP server
+	// Start metrics + HTTP ingest server
 	go func() {
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", promhttp.Handler())
@@ -62,7 +62,8 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"status":"ok"}`))
 		})
-		slog.Info("collector metrics server starting", "addr", *metricsAddr)
+		mux.Handle("/api/v1/spans", coll.HTTPIngestHandler())
+		slog.Info("collector metrics+ingest server starting", "addr", *metricsAddr)
 		if err := http.ListenAndServe(*metricsAddr, mux); err != nil {
 			slog.Error("metrics server error", "error", err)
 		}
