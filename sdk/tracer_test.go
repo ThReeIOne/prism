@@ -3,6 +3,7 @@ package sdk
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestTracer_StartSpan_RootSpan(t *testing.T) {

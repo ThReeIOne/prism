@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/shengli/prism/internal/storage"
-	
+	prismpb "github.com/shengli/prism/proto/gen"
 )
 
 // Collector receives spans from SDKs and writes them to storage in batches.
