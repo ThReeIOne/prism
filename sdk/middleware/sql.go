@@ -20,7 +20,7 @@ func WrapDB(tracer *sdk.Tracer, db *sql.DB) *TracedDB {
 
 func (t *TracedDB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	ctx, span := t.Tracer.StartSpan(ctx, "sql.Query", sdk.WithKind(sdk.KindClient))
-	defer t.Tracer.FinishSpan(span)
+	defer t.Tracer.FinishSpan(ctx, span)
 
 	span.SetTag("db.type", "sql")
 	span.SetTag("db.statement", truncateSQL(query, 500))
@@ -34,7 +34,7 @@ func (t *TracedDB) QueryContext(ctx context.Context, query string, args ...any) 
 
 func (t *TracedDB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	_, span := t.Tracer.StartSpan(ctx, "sql.QueryRow", sdk.WithKind(sdk.KindClient))
-	defer t.Tracer.FinishSpan(span)
+	defer t.Tracer.FinishSpan(ctx, span)
 
 	span.SetTag("db.type", "sql")
 	span.SetTag("db.statement", truncateSQL(query, 500))
@@ -44,7 +44,7 @@ func (t *TracedDB) QueryRowContext(ctx context.Context, query string, args ...an
 
 func (t *TracedDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	ctx, span := t.Tracer.StartSpan(ctx, "sql.Exec", sdk.WithKind(sdk.KindClient))
-	defer t.Tracer.FinishSpan(span)
+	defer t.Tracer.FinishSpan(ctx, span)
 
 	span.SetTag("db.type", "sql")
 	span.SetTag("db.statement", truncateSQL(query, 500))

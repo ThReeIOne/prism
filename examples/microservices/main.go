@@ -69,7 +69,7 @@ func main() {
 			sdk.WithTag("db.statement", "SELECT * FROM users WHERE id = $1"),
 		)
 		time.Sleep(10 * time.Millisecond)
-		userTracer.FinishSpan(span)
+		userTracer.FinishSpan(ctx, span)
 
 		json.NewEncoder(w).Encode(map[string]any{
 			"id":   "123",
@@ -90,7 +90,7 @@ func main() {
 			sdk.WithTag("peer.service", "localhost:6379"),
 		)
 		time.Sleep(2 * time.Millisecond)
-		orderTracer.FinishSpan(redisSpan)
+		orderTracer.FinishSpan(ctx, redisSpan)
 
 		// Call user service
 		req, _ := http.NewRequestWithContext(ctx, "GET", "http://localhost:8083/api/users/123", nil)
@@ -117,7 +117,7 @@ func main() {
 		// Validate request
 		_, valSpan := gatewayTracer.StartSpan(ctx, "validateRequest")
 		time.Sleep(1 * time.Millisecond)
-		gatewayTracer.FinishSpan(valSpan)
+		gatewayTracer.FinishSpan(ctx, valSpan)
 
 		// Call order service
 		req, _ := http.NewRequestWithContext(ctx, "GET", "http://localhost:8082"+r.URL.Path, nil)

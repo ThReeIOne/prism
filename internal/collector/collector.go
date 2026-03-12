@@ -11,6 +11,8 @@ import (
 	"github.com/shengli/prism/internal/metrics"
 	"github.com/shengli/prism/internal/storage"
 	prismpb "github.com/shengli/prism/proto/gen"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 // Collector receives spans from SDKs and writes them to storage in batches.
@@ -20,6 +22,7 @@ type Collector struct {
 	recordBuffer  []storage.SpanRecord // for HTTP ingest (already converted)
 	mu            sync.Mutex
 	flushSize     int
+	maxBuffer     int
 	flushInterval time.Duration
 	store         storage.Storage
 	depTracker    *DependencyTracker
@@ -30,6 +33,7 @@ type Collector struct {
 type Config struct {
 	FlushSize     int
 	FlushInterval time.Duration
+	MaxBuffer     int
 	Store         storage.Storage
 	DepTracker    *DependencyTracker
 }
@@ -42,14 +46,20 @@ func New(cfg Config) *Collector {
 	if cfg.FlushInterval <= 0 {
 		cfg.FlushInterval = 5 * time.Second
 	}
+	if cfg.MaxBuffer <= 0 {
+		cfg.MaxBuffer = 100000
+	}
 	c := &Collector{
 		buffer:        make([]*prismpb.Span, 0, cfg.FlushSize),
 		flushSize:     cfg.FlushSize,
+		maxBuffer:     cfg.MaxBuffer,
 		flushInterval: cfg.FlushInterval,
 		store:         cfg.Store,
 		depTracker:    cfg.DepTracker,
 		done:          make(chan struct{}),
 	}
+	// Publish the configured buffer capacity for use-rate calculation.
+	metrics.BufferCapacity.Set(float64(cfg.MaxBuffer))
 	go c.flushLoop()
 	return c
 }
@@ -57,10 +67,15 @@ func New(cfg Config) *Collector {
 // Report implements the gRPC CollectorService.Report method.
 func (c *Collector) Report(ctx context.Context, batch *prismpb.SpanBatch) (*prismpb.ReportResponse, error) {
 	spanCount := len(batch.Spans)
-	metrics.SpansReceived.Add(float64(spanCount))
-	metrics.SDKReportBatchSize.Observe(float64(spanCount))
 
 	c.mu.Lock()
+	if len(c.buffer)+len(c.recordBuffer) >= c.maxBuffer {
+		c.mu.Unlock()
+		metrics.SpansDropped.Add(float64(spanCount))
+		return nil, status.Errorf(codes.ResourceExhausted, "collector buffer full")
+	}
+	metrics.SpansReceived.Add(float64(spanCount))
+	metrics.SDKReportBatchSize.Observe(float64(spanCount))
 	for _, span := range batch.Spans {
 		if c.depTracker != nil {
 			c.depTracker.Record(span)
@@ -144,8 +159,14 @@ func (c *Collector) Shutdown() {
 }
 
 // bufferRecords adds pre-converted SpanRecords to the buffer (used by HTTP ingest).
-func (c *Collector) bufferRecords(records []storage.SpanRecord) {
+// Returns true if the buffer is full and the records were dropped.
+func (c *Collector) bufferRecords(records []storage.SpanRecord) bool {
 	c.mu.Lock()
+	if len(c.buffer)+len(c.recordBuffer) >= c.maxBuffer {
+		c.mu.Unlock()
+		metrics.SpansDropped.Add(float64(len(records)))
+		return true
+	}
 	c.recordBuffer = append(c.recordBuffer, records...)
 	shouldFlush := len(c.buffer) >= c.flushSize || len(c.recordBuffer) >= c.flushSize
 	metrics.BufferSize.Set(float64(len(c.buffer) + len(c.recordBuffer)))
@@ -154,6 +175,7 @@ func (c *Collector) bufferRecords(records []storage.SpanRecord) {
 	if shouldFlush {
 		go c.flush()
 	}
+	return false
 }
 
 func protoToRecord(sp *prismpb.Span) storage.SpanRecord {

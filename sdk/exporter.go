@@ -9,6 +9,7 @@ import (
 	prismpb "github.com/shengli/prism/proto/gen"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 )
 
 // BatchExporter buffers spans and sends them to the collector in batches.
@@ -16,6 +17,7 @@ type BatchExporter struct {
 	collectorAddr string
 	batchSize     int
 	flushInterval time.Duration
+	ingestToken   string // optional bearer token for gRPC metadata
 	buffer        []*Span
 	mu            sync.Mutex
 	client        prismpb.CollectorServiceClient
@@ -28,10 +30,16 @@ type BatchExporter struct {
 
 // NewBatchExporter creates a new exporter that batches spans for gRPC export.
 func NewBatchExporter(addr string, batchSize int, flushInterval time.Duration) *BatchExporter {
+	return newBatchExporter(addr, batchSize, flushInterval, "")
+}
+
+// newBatchExporter is the internal constructor that also accepts an ingest token.
+func newBatchExporter(addr string, batchSize int, flushInterval time.Duration, token string) *BatchExporter {
 	e := &BatchExporter{
 		collectorAddr: addr,
 		batchSize:     batchSize,
 		flushInterval: flushInterval,
+		ingestToken:   token,
 		buffer:        make([]*Span, 0, batchSize),
 		ready:         make(chan struct{}),
 		done:          make(chan struct{}),
@@ -89,6 +97,7 @@ func (e *BatchExporter) Flush() {
 	batch := e.buffer
 	e.buffer = make([]*Span, 0, e.batchSize)
 	client := e.client
+	token := e.ingestToken
 	e.mu.Unlock()
 
 	if client == nil {
@@ -108,6 +117,11 @@ func (e *BatchExporter) Flush() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	// Attach bearer token to outgoing gRPC metadata if configured.
+	if token != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+token)
+	}
 
 	_, err := client.Report(ctx, pbBatch)
 	if err != nil {

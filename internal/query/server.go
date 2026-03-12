@@ -18,13 +18,38 @@ import (
 
 // Server is the Query API server.
 type Server struct {
-	store  storage.Storage
-	router chi.Router
+	store       storage.Storage
+	router      chi.Router
+	token       string // optional bearer token; empty = no auth
+	corsOrigins string // value for Access-Control-Allow-Origin
+}
+
+// ServerOption configures a Server.
+type ServerOption func(*Server)
+
+// WithToken sets the optional bearer token for /api/v1/* routes.
+func WithToken(token string) ServerOption {
+	return func(s *Server) {
+		s.token = token
+	}
+}
+
+// WithCORSOrigins sets the allowed origin for CORS responses.
+func WithCORSOrigins(origins string) ServerOption {
+	return func(s *Server) {
+		s.corsOrigins = origins
+	}
 }
 
 // NewServer creates a new Query API server.
-func NewServer(store storage.Storage) *Server {
-	s := &Server{store: store}
+func NewServer(store storage.Storage, opts ...ServerOption) *Server {
+	s := &Server{
+		store:       store,
+		corsOrigins: "*",
+	}
+	for _, o := range opts {
+		o(s)
+	}
 	s.setupRoutes()
 	return s
 }
@@ -35,10 +60,15 @@ func (s *Server) setupRoutes() {
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 	r.Use(chimw.Timeout(30 * time.Second))
-	r.Use(corsMiddleware)
+	r.Use(s.corsMiddleware)
 	r.Use(metricsMiddleware)
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// Apply bearer token auth if configured
+		if s.token != "" {
+			r.Use(s.authMiddleware)
+		}
+
 		// Trace endpoints
 		r.Get("/traces/{traceID}", s.getTrace)
 		r.Get("/traces", s.searchTraces)
@@ -81,13 +111,33 @@ func (s *Server) ListenAndServe(addr string) error {
 	return http.ListenAndServe(addr, s.router)
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
+// corsMiddleware sets CORS headers using the configured origins.
+func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+	origins := s.corsOrigins
+	if origins == "" {
+		origins = "*"
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Origin", origins)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// authMiddleware validates the Authorization: Bearer <token> header.
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		expected := "Bearer " + s.token
+		if !strings.EqualFold(strings.TrimSpace(auth), strings.TrimSpace(expected)) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"invalid or missing bearer token"}`))
 			return
 		}
 		next.ServeHTTP(w, r)

@@ -27,6 +27,9 @@ func main() {
 		chPass      = flag.String("ch-pass", "", "ClickHouse password")
 		redisAddr   = flag.String("redis", "localhost:26379", "Redis address")
 		flushSize   = flag.Int("flush-size", 5000, "Batch flush size")
+		ingestToken = flag.String("ingest-token", "", "Optional bearer token for HTTP ingest auth (empty = no auth)")
+		corsOrigins = flag.String("cors-origins", "*", "Allowed CORS origin for HTTP ingest (Access-Control-Allow-Origin)")
+		maxBuffer   = flag.Int("max-buffer", 100000, "Maximum number of spans to buffer in memory before applying backpressure")
 	)
 	flag.Parse()
 
@@ -50,6 +53,7 @@ func main() {
 	// Create collector
 	coll := collector.New(collector.Config{
 		FlushSize:  *flushSize,
+		MaxBuffer:  *maxBuffer,
 		Store:      store,
 		DepTracker: depTracker,
 	})
@@ -62,7 +66,7 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"status":"ok"}`))
 		})
-		mux.Handle("/api/v1/spans", coll.HTTPIngestHandler())
+		mux.Handle("/api/v1/spans", coll.HTTPIngestHandler(*ingestToken, *corsOrigins))
 		slog.Info("collector metrics+ingest server starting", "addr", *metricsAddr)
 		if err := http.ListenAndServe(*metricsAddr, mux); err != nil {
 			slog.Error("metrics server error", "error", err)

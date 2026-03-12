@@ -18,7 +18,7 @@ var (
 		Namespace: "prism",
 		Subsystem: "collector",
 		Name:      "spans_dropped_total",
-		Help:      "Total number of spans dropped (flush failure).",
+		Help:      "Total number of spans dropped (flush failure or buffer full).",
 	})
 
 	FlushDuration = promauto.NewHistogram(prometheus.HistogramOpts{
@@ -42,6 +42,15 @@ var (
 		Subsystem: "collector",
 		Name:      "buffer_size",
 		Help:      "Current number of spans in the write buffer.",
+	})
+
+	// BufferCapacity is the configured max buffer size, useful for calculating
+	// buffer utilisation: buffer_size / buffer_capacity.
+	BufferCapacity = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "prism",
+		Subsystem: "collector",
+		Name:      "buffer_capacity",
+		Help:      "Configured maximum buffer size (max spans before backpressure).",
 	})
 
 	FlushErrors = promauto.NewCounter(prometheus.CounterOpts{
