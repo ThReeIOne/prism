@@ -25,7 +25,9 @@ interface ThroughputChartPoint {
 
 const RANGES = [
   { label: '1h', value: '1h' },
+  { label: '3h', value: '3h' },
   { label: '6h', value: '6h' },
+  { label: '12h', value: '12h' },
   { label: '24h', value: '24h' },
 ]
 
@@ -39,14 +41,21 @@ export default function Stats() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    getServices()
+    getServices(range)
       .then((r) => {
         const svcs = r.services || []
         setServices(svcs)
-        if (svcs.length > 0 && !service) setService(svcs[0].name)
+        if (svcs.length > 0) {
+          setService((prev) => {
+            const exists = svcs.some((s) => s.name === prev)
+            return exists ? prev : svcs[0].name
+          })
+        } else {
+          setService('')
+        }
       })
-      .catch(() => {})
-  }, [])
+      .catch((e) => setError(e.message))
+  }, [range])
 
   useEffect(() => {
     if (!service) return
@@ -57,7 +66,7 @@ export default function Stats() {
     setLoading(true)
     setError('')
     const now = new Date()
-    const hours = range === '1h' ? 1 : range === '6h' ? 6 : 24
+    const hours = parseInt(range) || 24
     const start = new Date(now.getTime() - hours * 3600_000).toISOString()
     const end = now.toISOString()
     const granularity = hours <= 1 ? '1m' : hours <= 6 ? '5m' : '15m'
@@ -87,7 +96,11 @@ export default function Stats() {
             value={service}
             onChange={(e) => setService(e.target.value)}
             className="bg-slate-700 border border-slate-600 rounded px-3 py-1.5 text-sm min-w-[180px]"
+            disabled={services.length === 0}
           >
+            {services.length === 0 && (
+              <option value="">No services found</option>
+            )}
             {services.map((s) => (
               <option key={s.name} value={s.name}>{s.name}</option>
             ))}
