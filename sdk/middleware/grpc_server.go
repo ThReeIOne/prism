@@ -36,7 +36,7 @@ func UnaryServerInterceptor(tracer *sdk.Tracer) grpc.UnaryServerInterceptor {
 		} else {
 			span.SetTag("rpc.grpc.status_code", "OK")
 		}
-		tracer.FinishSpan(span)
+		tracer.FinishSpan(ctx, span)
 		return resp, err
 	}
 }

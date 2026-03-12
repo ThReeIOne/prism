@@ -20,7 +20,7 @@ func UnaryClientInterceptor(tracer *sdk.Tracer) grpc.UnaryClientInterceptor {
 		opts ...grpc.CallOption,
 	) error {
 		ctx, span := tracer.StartSpan(ctx, method, sdk.WithKind(sdk.KindClient))
-		defer tracer.FinishSpan(span)
+		defer tracer.FinishSpan(ctx, span)
 
 		span.SetTag("rpc.system", "grpc")
 		span.SetTag("peer.service", cc.Target())

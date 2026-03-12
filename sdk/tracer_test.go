@@ -74,10 +74,56 @@ func TestTracer_FinishSpan(t *testing.T) {
 	tracer := NewTracer("test-svc", WithSampler(NeverSampler{}))
 	_, span := tracer.StartSpan(context.Background(), "op")
 	time.Sleep(time.Millisecond)
-	tracer.FinishSpan(span)
+	tracer.FinishSpan(context.Background(), span)
 
 	if span.DurationUs == 0 {
 		t.Fatal("expected non-zero DurationUs after FinishSpan")
+	}
+}
+
+func TestTracer_FinishSpan_ContextCancelled(t *testing.T) {
+	tracer := NewTracer("test-svc", WithSampler(NeverSampler{}))
+	ctx, cancel := context.WithCancel(context.Background())
+	_, span := tracer.StartSpan(ctx, "op")
+	cancel()
+	tracer.FinishSpan(ctx, span)
+
+	if span.Status != StatusError {
+		t.Fatalf("expected StatusError on cancelled context, got %v", span.Status)
+	}
+	if span.Tags["error.type"] != "context_cancelled" {
+		t.Fatalf("expected error.type=context_cancelled, got %q", span.Tags["error.type"])
+	}
+}
+
+func TestTracer_FinishSpan_DeadlineExceeded(t *testing.T) {
+	tracer := NewTracer("test-svc", WithSampler(NeverSampler{}))
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
+	defer cancel()
+	time.Sleep(time.Millisecond) // ensure deadline passes
+	_, span := tracer.StartSpan(ctx, "op")
+	tracer.FinishSpan(ctx, span)
+
+	if span.Status != StatusError {
+		t.Fatalf("expected StatusError on deadline exceeded, got %v", span.Status)
+	}
+	if span.Tags["error.type"] != "deadline_exceeded" {
+		t.Fatalf("expected error.type=deadline_exceeded, got %q", span.Tags["error.type"])
+	}
+}
+
+func TestTracer_FinishSpan_NoOverwriteBusinessError(t *testing.T) {
+	tracer := NewTracer("test-svc", WithSampler(NeverSampler{}))
+	ctx, cancel := context.WithCancel(context.Background())
+	_, span := tracer.StartSpan(ctx, "op")
+	span.Status = StatusError
+	span.Tags["error.message"] = "business error"
+	cancel()
+	tracer.FinishSpan(ctx, span)
+
+	// error.type should NOT be set — business error takes precedence
+	if _, ok := span.Tags["error.type"]; ok {
+		t.Fatal("expected business-layer error to NOT be overwritten by context cancellation")
 	}
 }
 

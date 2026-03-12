@@ -54,7 +54,7 @@ func HTTPServerMiddleware(tracer *sdk.Tracer) func(http.Handler) http.Handler {
 			if ww.status >= 400 {
 				span.Status = sdk.StatusError
 			}
-			tracer.FinishSpan(span)
+			tracer.FinishSpan(r.Context(), span)
 		})
 	}
 }
