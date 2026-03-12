@@ -1,7 +1,7 @@
 const BASE = '/api/v1'
 
-async function request<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`)
+async function request<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, signal ? { signal } : undefined)
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
     throw new Error(err.error || res.statusText)
@@ -99,12 +99,12 @@ export async function getDependencies(start?: string, end?: string): Promise<{ n
   return request(`/dependencies${qs ? '?' + qs : ''}`)
 }
 
-export async function getLatencyStats(params: Record<string, string>): Promise<{ data: LatencyPoint[] }> {
+export async function getLatencyStats(params: Record<string, string>, signal?: AbortSignal): Promise<{ data: LatencyPoint[] }> {
   const qs = new URLSearchParams(params).toString()
-  return request(`/stats/latency?${qs}`)
+  return request(`/stats/latency?${qs}`, signal)
 }
 
-export async function getThroughputStats(params: Record<string, string>): Promise<{ data: ThroughputPoint[] }> {
+export async function getThroughputStats(params: Record<string, string>, signal?: AbortSignal): Promise<{ data: ThroughputPoint[] }> {
   const qs = new URLSearchParams(params).toString()
-  return request(`/stats/throughput?${qs}`)
+  return request(`/stats/throughput?${qs}`, signal)
 }

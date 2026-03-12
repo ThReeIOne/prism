@@ -52,10 +52,7 @@ export default function Stats() {
 
   useEffect(() => {
     if (!service) return
-    fetchStats()
-  }, [service, range])
-
-  function fetchStats() {
+    const controller = new AbortController()
     setLoading(true)
     setError('')
     const now = new Date()
@@ -66,16 +63,23 @@ export default function Stats() {
     const params = { service, start, end, granularity }
 
     Promise.all([
-      getLatencyStats(params).catch(() => ({ data: [] })),
-      getThroughputStats(params).catch(() => ({ data: [] })),
+      getLatencyStats(params, controller.signal).catch(() => ({ data: [] })),
+      getThroughputStats(params, controller.signal).catch(() => ({ data: [] })),
     ])
       .then(([lat, thr]) => {
+        if (controller.signal.aborted) return
         setLatency((lat.data || []).map(formatLatencyPoint))
         setThroughput((thr.data || []).map(formatThroughputPoint))
       })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false))
-  }
+      .catch((e) => {
+        if (!controller.signal.aborted) setError(e.message)
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false)
+      })
+
+    return () => controller.abort()
+  }, [service, range])
 
   return (
     <div className="p-6">

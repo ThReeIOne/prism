@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log/slog"
 	"net"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
@@ -59,16 +61,21 @@ func main() {
 	})
 
 	// Start metrics + HTTP ingest server
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+	mux.Handle("/api/v1/spans", coll.HTTPIngestHandler(*ingestToken, *corsOrigins))
+
+	httpServer := &http.Server{
+		Addr:    *metricsAddr,
+		Handler: mux,
+	}
 	go func() {
-		mux := http.NewServeMux()
-		mux.Handle("/metrics", promhttp.Handler())
-		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status":"ok"}`))
-		})
-		mux.Handle("/api/v1/spans", coll.HTTPIngestHandler(*ingestToken, *corsOrigins))
 		slog.Info("collector metrics+ingest server starting", "addr", *metricsAddr)
-		if err := http.ListenAndServe(*metricsAddr, mux); err != nil {
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("metrics server error", "error", err)
 		}
 	}()
@@ -97,6 +104,13 @@ func main() {
 
 	slog.Info("shutting down collector...")
 	grpcServer.GracefulStop()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(ctx); err != nil {
+		slog.Error("HTTP server shutdown error", "error", err)
+	}
+
 	coll.Shutdown()
 	rdb.Close()
 	slog.Info("collector shutdown complete")

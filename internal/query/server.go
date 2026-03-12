@@ -1,6 +1,7 @@
 package query
 
 import (
+	"crypto/subtle"
 	"io/fs"
 	"log/slog"
 	"net/http"
@@ -44,8 +45,7 @@ func WithCORSOrigins(origins string) ServerOption {
 // NewServer creates a new Query API server.
 func NewServer(store storage.Storage, opts ...ServerOption) *Server {
 	s := &Server{
-		store:       store,
-		corsOrigins: "*",
+		store: store,
 	}
 	for _, o := range opts {
 		o(s)
@@ -115,7 +115,7 @@ func (s *Server) ListenAndServe(addr string) error {
 func (s *Server) corsMiddleware(next http.Handler) http.Handler {
 	origins := s.corsOrigins
 	if origins == "" {
-		origins = "*"
+		return next
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", origins)
@@ -134,7 +134,7 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		auth := r.Header.Get("Authorization")
 		expected := "Bearer " + s.token
-		if !strings.EqualFold(strings.TrimSpace(auth), strings.TrimSpace(expected)) {
+		if subtle.ConstantTimeCompare([]byte(auth), []byte(expected)) != 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 			w.Write([]byte(`{"error":"invalid or missing bearer token"}`))

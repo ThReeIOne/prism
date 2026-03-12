@@ -1,10 +1,10 @@
 package collector
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/shengli/prism/internal/metrics"
@@ -53,7 +53,7 @@ func (c *Collector) HTTPIngestHandler(token, origins string) http.Handler {
 		if token != "" {
 			auth := r.Header.Get("Authorization")
 			expected := "Bearer " + token
-			if !strings.EqualFold(strings.TrimSpace(auth), strings.TrimSpace(expected)) {
+			if subtle.ConstantTimeCompare([]byte(auth), []byte(expected)) != 1 {
 				writeCORS(w, origins)
 				writeJSONError(w, http.StatusUnauthorized, "invalid or missing bearer token")
 				return
@@ -149,7 +149,7 @@ func httpSpanToRecord(sp HTTPSpan) storage.SpanRecord {
 
 func writeCORS(w http.ResponseWriter, origins string) {
 	if origins == "" {
-		origins = "*"
+		return
 	}
 	w.Header().Set("Access-Control-Allow-Origin", origins)
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")

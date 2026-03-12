@@ -20,7 +20,7 @@ func (t *TracedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		req.Method+" "+req.URL.Host+req.URL.Path,
 		sdk.WithKind(sdk.KindClient),
 	)
-	defer t.Tracer.FinishSpan(req.Context(), span)
+	defer t.Tracer.FinishSpan(ctx, span)
 
 	propagation.Inject(span, req.Header)
 	span.SetTag("http.method", req.Method)

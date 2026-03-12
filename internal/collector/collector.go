@@ -82,8 +82,8 @@ func (c *Collector) Report(ctx context.Context, batch *prismpb.SpanBatch) (*pris
 		}
 		c.buffer = append(c.buffer, span)
 	}
-	shouldFlush := len(c.buffer) >= c.flushSize
-	metrics.BufferSize.Set(float64(len(c.buffer)))
+	shouldFlush := len(c.buffer)+len(c.recordBuffer) >= c.flushSize
+	metrics.BufferSize.Set(float64(len(c.buffer) + len(c.recordBuffer)))
 	c.mu.Unlock()
 
 	if shouldFlush {
@@ -120,7 +120,12 @@ func (c *Collector) flush() {
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
 			backoff := time.Duration(attempt*attempt) * 500 * time.Millisecond
-			time.Sleep(backoff)
+			select {
+			case <-c.done:
+				slog.Warn("flush retry aborted due to shutdown")
+				return
+			case <-time.After(backoff):
+			}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		lastErr = c.store.BatchInsert(ctx, records)

@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/shengli/prism/internal/query"
 	"github.com/shengli/prism/internal/storage"
@@ -42,9 +45,16 @@ func main() {
 		query.WithCORSOrigins(*corsOrigins),
 	)
 
+	httpServer := &http.Server{
+		Addr:    *listenAddr,
+		Handler: srv.Handler(),
+	}
+
 	go func() {
-		if err := srv.ListenAndServe(*listenAddr); err != nil {
+		slog.Info("query server starting", "addr", *listenAddr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			slog.Error("query server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -52,5 +62,12 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh
+
+	slog.Info("shutting down query server...")
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(ctx); err != nil {
+		slog.Error("query server shutdown error", "error", err)
+	}
 	slog.Info("query server shutdown complete")
 }
