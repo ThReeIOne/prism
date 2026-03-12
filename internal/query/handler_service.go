@@ -8,7 +8,7 @@ import (
 )
 
 func (s *Server) getServices(w http.ResponseWriter, r *http.Request) {
-	lookback := time.Hour // default
+	var lookback time.Duration // zero means no time filter
 	if lb := r.URL.Query().Get("lookback"); lb != "" {
 		if d, err := time.ParseDuration(lb); err == nil && d > 0 {
 			lookback = d

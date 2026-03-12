@@ -41,21 +41,14 @@ export default function Stats() {
   const [error, setError] = useState('')
 
   useEffect(() => {
-    getServices(range)
+    getServices()
       .then((r) => {
         const svcs = r.services || []
         setServices(svcs)
-        if (svcs.length > 0) {
-          setService((prev) => {
-            const exists = svcs.some((s) => s.name === prev)
-            return exists ? prev : svcs[0].name
-          })
-        } else {
-          setService('')
-        }
+        if (svcs.length > 0 && !service) setService(svcs[0].name)
       })
       .catch((e) => setError(e.message))
-  }, [range])
+  }, [])
 
   useEffect(() => {
     if (!service) return

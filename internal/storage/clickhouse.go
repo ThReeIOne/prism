@@ -223,15 +223,15 @@ func (s *ClickHouseStorage) SearchTraces(ctx context.Context, params TraceSearch
 }
 
 func (s *ClickHouseStorage) GetServices(ctx context.Context, lookback time.Duration) ([]ServiceInfo, error) {
-	if lookback <= 0 {
-		lookback = time.Hour
-	}
-	seconds := int(lookback.Seconds())
-	if seconds < 1 {
-		seconds = 3600
-	}
+	var whereClause string
+	var args []any
 
-	rows, err := s.conn.Query(ctx, fmt.Sprintf(`
+	if lookback > 0 {
+		seconds := int(lookback.Seconds())
+		if seconds < 1 {
+			seconds = 3600
+		}
+		whereClause = fmt.Sprintf(`
 		SELECT
 			service,
 			count() / %d AS qps,
@@ -241,7 +241,22 @@ func (s *ClickHouseStorage) GetServices(ctx context.Context, lookback time.Durat
 		WHERE start_us >= ?
 		GROUP BY service
 		ORDER BY service
-	`, seconds), uint64(time.Now().Add(-lookback).UnixMicro()))
+		`, seconds)
+		args = append(args, uint64(time.Now().Add(-lookback).UnixMicro()))
+	} else {
+		whereClause = `
+		SELECT
+			service,
+			toFloat64(count()) AS qps,
+			countIf(status = 'error') / greatest(count(), 1) AS error_rate,
+			quantile(0.99)(duration_us) / 1000 AS p99_ms
+		FROM spans
+		GROUP BY service
+		ORDER BY service
+		`
+	}
+
+	rows, err := s.conn.Query(ctx, whereClause, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query services: %w", err)
 	}

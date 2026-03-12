@@ -18,7 +18,7 @@ export default function TraceSearch() {
   const [limit, setLimit] = useState(searchParams.get('limit') || '20')
 
   useEffect(() => {
-    getServices().then((r) => setServices(r.services || [])).catch(() => {})
+    getServices().then((r) => setServices(r.services || [])).catch((e) => setError(e.message))
   }, [])
 
   useEffect(() => {
