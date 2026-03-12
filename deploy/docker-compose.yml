@@ -12,9 +12,10 @@ services:
     environment:
       CLICKHOUSE_DB: prism
       CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: prism123
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     healthcheck:
-      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      test: ["CMD", "clickhouse-client", "--password", "prism123", "--query", "SELECT 1"]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -48,6 +49,7 @@ services:
       - "-metrics=:24318"
       - "-clickhouse=clickhouse:9000"
       - "-ch-db=prism"
+      - "-ch-pass=prism123"
       - "-redis=redis:6379"
       - "-flush-size=5000"
 
@@ -64,6 +66,7 @@ services:
       - "-listen=:28080"
       - "-clickhouse=clickhouse:9000"
       - "-ch-db=prism"
+      - "-ch-pass=prism123"
 
   prometheus:
     image: prom/prometheus:v2.51.0
