@@ -303,18 +303,35 @@ func (s *ClickHouseStorage) GetOperations(ctx context.Context, service string) (
 }
 
 func (s *ClickHouseStorage) GetDependencies(ctx context.Context, start, end time.Time) ([]DependencyEdge, error) {
-	rows, err := s.conn.Query(ctx, `
-		SELECT
-			parent_service,
-			child_service,
-			sum(call_count) AS call_count,
-			sum(error_count) AS error_count,
-			avg(avg_duration_us) / 1000 AS avg_ms
-		FROM service_dependencies_mv
-		WHERE date >= ? AND date <= ?
-		GROUP BY parent_service, child_service
-		ORDER BY call_count DESC
-	`, start.Format("2006-01-02"), end.Format("2006-01-02"))
+	var rows driver.Rows
+	var err error
+
+	if start.IsZero() && end.IsZero() {
+		rows, err = s.conn.Query(ctx, `
+			SELECT
+				parent_service,
+				child_service,
+				sum(call_count) AS call_count,
+				sum(error_count) AS error_count,
+				avg(avg_duration_us) / 1000 AS avg_ms
+			FROM service_dependencies_mv
+			GROUP BY parent_service, child_service
+			ORDER BY call_count DESC
+		`)
+	} else {
+		rows, err = s.conn.Query(ctx, `
+			SELECT
+				parent_service,
+				child_service,
+				sum(call_count) AS call_count,
+				sum(error_count) AS error_count,
+				avg(avg_duration_us) / 1000 AS avg_ms
+			FROM service_dependencies_mv
+			WHERE date >= ? AND date <= ?
+			GROUP BY parent_service, child_service
+			ORDER BY call_count DESC
+		`, start.Format("2006-01-02"), end.Format("2006-01-02"))
+	}
 	if err != nil {
 		return nil, fmt.Errorf("query dependencies: %w", err)
 	}

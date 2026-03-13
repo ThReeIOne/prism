@@ -7,10 +7,24 @@ import (
 )
 
 func (s *Server) getDependencies(w http.ResponseWriter, r *http.Request) {
-	start, end, err := parseTimeRange(r)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
+	var start, end time.Time
+
+	// Only apply time filter when explicitly provided
+	if startStr := r.URL.Query().Get("start"); startStr != "" {
+		var err error
+		start, err = time.Parse(time.RFC3339, startStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if endStr := r.URL.Query().Get("end"); endStr != "" {
+		var err error
+		end, err = time.Parse(time.RFC3339, endStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 
 	deps, err := s.store.GetDependencies(r.Context(), start, end)
